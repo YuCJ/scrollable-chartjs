@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bar } from "react-chartjs-2";
+import { Line } from "react-chartjs-2";
 
 export default function ScrollableBar({ x = 50, data, options }) {
   const [isScrollMode, setIsScrollMode] = useState(false);
+  const wrapperRef = useRef(null)
   const chartRef = useRef(null);
   const WRef = useRef(null);
   const currentNRef = useRef(null);
   const NRef = useRef(null);
   const isScrollModeRef = useRef(null);
   const nxRef = useRef(null);
+
+  const getWrapperWidth = () => wrapperRef.current?.getBoundingClientRect().width
 
   const optionsBasedOnIsScrollMode = useMemo(
     () => ({
@@ -45,7 +48,7 @@ export default function ScrollableBar({ x = 50, data, options }) {
   }, []);
 
   const goScrollMode = useCallback(() => {
-    WRef.current = window.innerWidth;
+    WRef.current = getWrapperWidth();
     NRef.current = currentNRef.current;
     resizeChartBasedPointNumber({ forceResize: true });
     setIsScrollMode(true);
@@ -124,8 +127,8 @@ export default function ScrollableBar({ x = 50, data, options }) {
 
       if (isScrollModeRef.current === true) {
         if (
-          window.innerWidth >= WRef.current &&
-          window.innerWidth >= nxRef.current
+          getWrapperWidth() >= WRef.current &&
+          getWrapperWidth() >= nxRef.current
         ) {
           // console.log(`handle window resizes -> go regular mode`);
           goRegularMode();
@@ -155,8 +158,9 @@ export default function ScrollableBar({ x = 50, data, options }) {
         width: "100%",
         overflowX: "scroll",
       }}
+      ref={wrapperRef}
     >
-      <Bar ref={chartRef} options={optionsBasedOnIsScrollMode} data={data} />
+      <Line ref={chartRef} options={optionsBasedOnIsScrollMode} data={data} />
     </div>
   );
 }
