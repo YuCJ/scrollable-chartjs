@@ -1,7 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Line } from "react-chartjs-2";
 
-export default function ScrollableBar({ x = 50, data, options }) {
+const getShouldBeScrollMode = ({
+  minXTickWidth, // x軸一格可接受的最小寬度
+  xTicksCount, // x軸有幾格
+  wrapperWidth // 圖表顯示區塊的大小
+}) => {
+  const tickWidthIfNoScroll = wrapperWidth / xTicksCount
+  const isScrollMode = tickWidthIfNoScroll < minXTickWidth
+  return isScrollMode
+}
+
+export default function ScrollableBar({ minXTickWidth = 50, data, options }) {
   const [isScrollMode, setIsScrollMode] = useState(false);
   const wrapperRef = useRef(null)
   const chartRef = useRef(null);
@@ -11,7 +21,10 @@ export default function ScrollableBar({ x = 50, data, options }) {
   const isScrollModeRef = useRef(null);
   const nxRef = useRef(null);
 
-  const getWrapperWidth = () => wrapperRef.current?.getBoundingClientRect().width
+  const getWrapperWidth = useCallback(
+    () => wrapperRef.current?.getBoundingClientRect().width,
+    []
+  )
 
   const optionsBasedOnIsScrollMode = useMemo(
     () => ({
@@ -52,7 +65,7 @@ export default function ScrollableBar({ x = 50, data, options }) {
     NRef.current = currentNRef.current;
     resizeChartBasedPointNumber({ forceResize: true });
     setIsScrollMode(true);
-  }, [resizeChartBasedPointNumber]);
+  }, [getWrapperWidth, resizeChartBasedPointNumber]);
 
   const goRegularMode = useCallback(() => {
     WRef.current = null;
@@ -65,89 +78,44 @@ export default function ScrollableBar({ x = 50, data, options }) {
   }, [isScrollMode]);
 
   useEffect(() => {
-    nxRef.current = n * x;
-  }, [n, x]);
-
-  // initialization
-  useEffect(() => {
-    if (chartRef.current === null || nxRef.current === null) {
-      return;
-    }
-
-    if (chartRef.current.chartArea.width < nxRef.current) {
-      console.log(
-        `Schedule a resize for chart if it's going to be scroll mode`
-      );
-      // TODO: (wtlin1228) don't know why synchronous resize doesn't work
-      setTimeout(() => {
-        chartRef.current.resize(
-          nxRef.current +
-            chartRef.current.width -
-            chartRef.current.chartArea.width,
-          350
-        );
-      }, 100);
-    }
-  }, []);
+    nxRef.current = n * minXTickWidth;
+  }, [n, minXTickWidth]);
 
   // handle n changes
   useEffect(() => {
+    if (
+      getShouldBeScrollMode({
+        wrapperWidth: getWrapperWidth(),
+        xTicksCount: n,
+        minXTickWidth,
+      })
+    ) {
+      goScrollMode();
+    } else {
+      goRegularMode()
+    }
     // console.log(`handle n changes`);
-
-    if (isScrollModeRef.current === null) {
-      return;
-    }
-
-    if (isScrollModeRef.current === true) {
-      // console.log(`handle n changes -> resizeChartBasedPointNumber`);
-      resizeChartBasedPointNumber();
-      if (n < NRef.current) {
-        // console.log("handle n changes -> go regular mode");
-        goRegularMode();
-      }
-      return;
-    }
-
-    if (isScrollModeRef.current === false) {
-      if (chartRef.current.chartArea.width < n * x) {
-        // console.log("handle n changes -> go scroll mode");
-        goScrollMode();
-      }
-      return;
-    }
-  }, [n, x, resizeChartBasedPointNumber, goRegularMode, goScrollMode]);
+  }, [n, minXTickWidth, goRegularMode, goScrollMode, getWrapperWidth]);
 
   // handle window resize
   useEffect(() => {
     const handleWindowResize = () => {
-      // console.log(`handle window resizes`);
-      if (isScrollModeRef.current === null || nxRef.current === null) {
-        return;
-      }
-
-      if (isScrollModeRef.current === true) {
-        if (
-          getWrapperWidth() >= WRef.current &&
-          getWrapperWidth() >= nxRef.current
-        ) {
-          // console.log(`handle window resizes -> go regular mode`);
-          goRegularMode();
-        }
-        return;
-      }
-
-      if (isScrollModeRef.current === false) {
-        if (chartRef.current.chartArea.width < nxRef.current) {
-          // console.log(`handle window resizes -> go scroll mode`);
-          goScrollMode();
-        }
-        return;
+      if (
+        getShouldBeScrollMode({
+          wrapperWidth: getWrapperWidth(),
+          xTicksCount: n,
+          minXTickWidth,
+        })
+      ) {
+        goScrollMode();
+      } else {
+        goRegularMode()
       }
     };
 
     window.addEventListener("resize", handleWindowResize);
     return () => window.removeEventListener("resize", handleWindowResize);
-  }, [goRegularMode, goScrollMode, resizeChartBasedPointNumber]);
+  }, [getWrapperWidth, goRegularMode, goScrollMode, minXTickWidth, n]);
 
   window.chartRef = chartRef.current;
   return (
