@@ -6,20 +6,16 @@ const getShouldBeScrollMode = ({
   xTicksCount, // x軸有幾格
   wrapperWidth // 圖表顯示區塊的大小
 }) => {
+  if (!xTicksCount || !wrapperWidth) return true
   const tickWidthIfNoScroll = wrapperWidth / xTicksCount
   const isScrollMode = tickWidthIfNoScroll < minXTickWidth
   return isScrollMode
 }
 
-export default function ScrollableBar({ minXTickWidth = 50, data, options }) {
+export default function ScrollableBar({ minXTickWidth = 150, data, options }) {
   const [isScrollMode, setIsScrollMode] = useState(false);
   const wrapperRef = useRef(null)
   const chartRef = useRef(null);
-  const WRef = useRef(null);
-  const currentNRef = useRef(null);
-  const NRef = useRef(null);
-  const isScrollModeRef = useRef(null);
-  const nxRef = useRef(null);
 
   const getWrapperWidth = useCallback(
     () => wrapperRef.current?.getBoundingClientRect().width,
@@ -29,64 +25,48 @@ export default function ScrollableBar({ minXTickWidth = 50, data, options }) {
   const optionsBasedOnIsScrollMode = useMemo(
     () => ({
       ...options,
-      responsive: !isScrollMode,
+      responsive: !isScrollMode
     }),
     [isScrollMode, options]
   );
 
-  const n = useMemo(() => {
-    const result = data.datasets.reduce((acc, curr) => {
+  const xTicksCount = useMemo(() => {
+    const nextXTickCount = data.datasets.reduce((acc, curr) => {
       if (curr.data.length > acc) {
         return curr.data.length;
       }
       return acc;
     }, 0);
-    currentNRef.current = result;
-    return result;
+    return nextXTickCount;
   }, [data]);
 
+  // 不知道能不能用 <Line options={{ ? }} /> 去 resize
+  // 這樣就不需要這個 function
+  // 只要在 isScrollMode === true 時加 prop 到 options 裡就好
   const resizeChartBasedPointNumber = useCallback(({ forceResize } = {}) => {
-    if (isScrollModeRef.current === null || nxRef.current === null) {
-      return;
-    }
-
-    if (forceResize || isScrollModeRef.current === true) {
+    if (forceResize || isScrollMode) {
       chartRef.current.resize(
-        nxRef.current +
-          chartRef.current.width -
-          chartRef.current.chartArea.width,
+        minXTickWidth * xTicksCount,
         350
       );
     }
-  }, []);
+  }, [isScrollMode, minXTickWidth, xTicksCount]);
 
   const goScrollMode = useCallback(() => {
-    WRef.current = getWrapperWidth();
-    NRef.current = currentNRef.current;
     resizeChartBasedPointNumber({ forceResize: true });
     setIsScrollMode(true);
-  }, [getWrapperWidth, resizeChartBasedPointNumber]);
+  }, [resizeChartBasedPointNumber]);
 
   const goRegularMode = useCallback(() => {
-    WRef.current = null;
     setIsScrollMode(false);
   }, []);
 
-  useEffect(() => {
-    // console.log(`Current state: ${isScrollMode ? "Scroll" : "Regular"} Mode`);
-    isScrollModeRef.current = isScrollMode;
-  }, [isScrollMode]);
-
-  useEffect(() => {
-    nxRef.current = n * minXTickWidth;
-  }, [n, minXTickWidth]);
-
-  // handle n changes
+  // Handle `xTicksCount` or `minXTickWidth` changes
   useEffect(() => {
     if (
       getShouldBeScrollMode({
         wrapperWidth: getWrapperWidth(),
-        xTicksCount: n,
+        xTicksCount,
         minXTickWidth,
       })
     ) {
@@ -94,30 +74,43 @@ export default function ScrollableBar({ minXTickWidth = 50, data, options }) {
     } else {
       goRegularMode()
     }
-    // console.log(`handle n changes`);
-  }, [n, minXTickWidth, goRegularMode, goScrollMode, getWrapperWidth]);
+  }, [
+    xTicksCount,
+    minXTickWidth,
+    goRegularMode,
+    goScrollMode,
+    getWrapperWidth
+  ]);
 
-  // handle window resize
-  useEffect(() => {
-    const handleWindowResize = () => {
-      if (
-        getShouldBeScrollMode({
-          wrapperWidth: getWrapperWidth(),
-          xTicksCount: n,
-          minXTickWidth,
-        })
-      ) {
-        goScrollMode();
-      } else {
-        goRegularMode()
-      }
-    };
+  // Handle `wrapperWidth` changes:
+  // TODO(yucj): Can we use ResizeObserver to observe the wrapper instead?
+  useEffect(
+    () => {
+      const handleWindowResize = () => {
+        if (
+          getShouldBeScrollMode({
+            wrapperWidth: getWrapperWidth(),
+            xTicksCount,
+            minXTickWidth,
+          })
+        ) {
+          goScrollMode();
+        } else {
+          goRegularMode()
+        }
+      };
+      window.addEventListener("resize", handleWindowResize);
+      return () => window.removeEventListener("resize", handleWindowResize);
+    },
+    [
+      getWrapperWidth,
+      goRegularMode,
+      goScrollMode,
+      minXTickWidth,
+      xTicksCount
+    ]
+  );
 
-    window.addEventListener("resize", handleWindowResize);
-    return () => window.removeEventListener("resize", handleWindowResize);
-  }, [getWrapperWidth, goRegularMode, goScrollMode, minXTickWidth, n]);
-
-  window.chartRef = chartRef.current;
   return (
     <div
       style={{
@@ -128,7 +121,11 @@ export default function ScrollableBar({ minXTickWidth = 50, data, options }) {
       }}
       ref={wrapperRef}
     >
-      <Line ref={chartRef} options={optionsBasedOnIsScrollMode} data={data} />
+      <Line
+        ref={chartRef}
+        options={optionsBasedOnIsScrollMode}
+        data={data}
+      />
     </div>
   );
 }
